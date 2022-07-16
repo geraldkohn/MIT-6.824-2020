@@ -6,8 +6,55 @@ package mr
 // remember to capitalize all names.
 //
 
-import "os"
-import "strconv"
+import (
+	"os"
+	"strconv"
+)
+
+type HeartbeatArgs struct {
+	NodeType nodeType
+	Ip       string
+	Port     string
+	NodeId   int
+}
+
+type HeartbeatReply struct {
+}
+
+type JoinClusterArgs struct {
+	Ip   string
+	Port string
+}
+
+type JoinClusterReply struct {
+	Agreement bool   //master节点是否同意加入集群
+	nodeId    int    //节点序号
+	Msg       string //返回的信息
+}
+
+type AskMapTaskArgs struct {
+}
+
+type AskMapTaskReply struct {
+}
+
+type AskReduceTaskArgs struct {
+}
+
+type AskReduceTaskReply struct {
+}
+
+type DoneMapTaskArgs struct {
+}
+
+type DoneMapTaskReply struct {
+}
+
+type DoneReduceTaskArgs struct {
+}
+
+type DoneReduceTaskReply struct {
+}
 
 //
 // example to show how to declare the arguments
@@ -23,7 +70,6 @@ type ExampleReply struct {
 }
 
 // Add your RPC definitions here.
-
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the master.
