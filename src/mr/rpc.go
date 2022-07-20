@@ -11,49 +11,25 @@ import (
 	"strconv"
 )
 
-type HeartbeatArgs struct {
-	NodeType nodeType
-	Ip       string
-	Port     string
-	NodeId   int
+type AskForTaskArgs struct {
 }
 
-type HeartbeatReply struct {
+type AskForTaskReply struct {
+	taskInfo taskInfoInterface
 }
 
-type JoinClusterArgs struct {
-	Ip   string
-	Port string
+type TaskDoneArgs struct {
+	taskInfo taskInfoInterface
 }
 
-type JoinClusterReply struct {
-	Agreement bool   //master节点是否同意加入集群
-	nodeId    int    //节点序号
-	Msg       string //返回的信息
+type TaskDoneReply struct {
 }
 
-type AskMapTaskArgs struct {
+type HeartBeatArgs struct {
+	taskInfo taskInfoInterface
 }
 
-type AskMapTaskReply struct {
-}
-
-type AskReduceTaskArgs struct {
-}
-
-type AskReduceTaskReply struct {
-}
-
-type DoneMapTaskArgs struct {
-}
-
-type DoneMapTaskReply struct {
-}
-
-type DoneReduceTaskArgs struct {
-}
-
-type DoneReduceTaskReply struct {
+type HeartBeatReply struct {
 }
 
 //
