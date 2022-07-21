@@ -1,3 +1,3 @@
-module github.com/geraldkohn/6.824/src/mr
+module github.com/geraldkohn/MIT-6.824-2020/src/mr
 
 go 1.18

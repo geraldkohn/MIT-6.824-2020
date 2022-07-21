@@ -59,7 +59,6 @@ func (info *mapTaskInfo) SetBeginTime() {
 
 func (info *mapTaskInfo) UpdateHeartBeatTime() {
 	info.heartBeatTime = time.Now()
-	return
 }
 
 func (info *mapTaskInfo) OutOfTime() bool {
@@ -171,7 +170,7 @@ func (m *resourceMaster) reduceTaskRunningToDone(reduceIndex int) error {
 	if err != nil {
 		return errors.New("reduceTaskRunning do not have special mapTask")
 	}
-	m.mapTaskDone.Push(task)
+	m.reduceTaskDone.Push(task)
 	return nil
 }
 
@@ -360,6 +359,7 @@ func MakeMaster(files []string, nReduce int) *Master {
 	// Your code here.
 	m.resource.startMapTask(files, nReduce)
 	m.resource.startReduceTask(files, nReduce)
+	m.resource.scanNode()
 
 	m.server()
 	return &m
