@@ -15,6 +15,7 @@ type AskForTaskArgs struct {
 }
 
 type AskForTaskReply struct {
+	taskType taskType
 	taskInfo taskInfoInterface
 }
 

@@ -244,20 +244,29 @@ func (m *resourceMaster) scanNode() {
 
 //节点请求任务
 func (m *Master) AskForTask(args *AskForTaskArgs, reply *AskForTaskReply) error {
+
+	// 任务都结束
+	if m.resource.mapTaskWaiting.size() == 0 && m.resource.mapTaskRunning.size() == 0 && m.resource.reduceTaskWaiting.size() == 0 && m.resource.reduceTaskRunning.size() == 0 {
+		reply.taskInfo = nil
+		reply.taskType = task_End
+		return nil
+	}
+
 	//如果map任务已经结束, 开始分配task任务
 	if m.resource.mapTaskWaiting.size() == 0 && m.resource.mapTaskRunning.size() == 0 {
 		task, err := m.resource.reduceTaskWaitingToRunning()
 		if err != nil {
-			return err
+			reply.taskType = task_Wait
 		}
 		reply.taskInfo = task
 	} else {
 		task, err := m.resource.mapTaskWaitingToRunning()
 		if err != nil {
-			return err
+			reply.taskType = task_Wait
 		}
 		reply.taskInfo = task
 	}
+
 	return nil
 }
 
