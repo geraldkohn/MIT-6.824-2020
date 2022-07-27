@@ -1,8 +1,8 @@
 package kvraft
 
 import (
-	"../labgob"
-	"../labrpc"
+	"github.com/geraldkohn/MIT-6.824-2020/src/labgob"
+	"github.com/geraldkohn/MIT-6.824-2020/src/labrpc"
 	"log"
 	"../raft"
 	"sync"

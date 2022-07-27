@@ -19,7 +19,7 @@ package raft
 
 import "sync"
 import "sync/atomic"
-import "../labrpc"
+import "github.com/geraldkohn/MIT-6.824-2020/src/labrpc"
 
 // import "bytes"
 // import "../labgob"
