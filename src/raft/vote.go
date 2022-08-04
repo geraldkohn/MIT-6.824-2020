@@ -171,7 +171,7 @@ func (rf *Raft) sendRequestVoteToEachPeers() {
 		lastLogTerm:  lastLogTerm,
 	}
 	//遍历每一个节点, 除了自己
-	for i, _ := range rf.peers {
+	for i := range rf.peers {
 		if i == rf.me {
 			continue
 		}
@@ -187,40 +187,43 @@ func (rf *Raft) sendRequestVoteToEachPeers() {
 		}(voteCh, exit, i)
 	}
 
-	for {
-		select {
+	select {
+	case <-exit: //主进程退出
+		close(voteCh)
+		close(exit)
+		return
 
-		case <-exit:	//主进程退出
-			close(voteCh)
-			close(exit)
-			return
+	case <-rf.sm.electionTimer.C: //选举超时
+		close(voteCh)
+		close(exit)
+		rf.stateConverter(candidate, candidate)
+		return
 
-		case <-rf.sm.electionTimer.C:	//选举超时
-			close(voteCh)
-			close(exit)
-			rf.stateConverter(candidate, candidate)
-			return
-
-		case vote := <-voteCh:	//获得rpc调用结果
-			respondPeer += 1
-			if vote == true {
-				grantedPeer += 1
-			}
-			//超过半数同意, candidate convert to leader
-			if grantedPeer > len(rf.peers)/2 {
-				rf.stateConverter(candidate, leader)
-				return
-			}
-			//超过半数反对, candidate convert to follower
-			if respondPeer-grantedPeer > len(rf.peers)/2 {
-				rf.stateConverter(candidate, follower)
-				return
-			}
+	case vote := <-voteCh: //获得rpc调用结果
+		respondPeer += 1
+		if vote {
+			grantedPeer += 1
 		}
-
+		//超过半数同意, candidate convert to leader
+		if grantedPeer > len(rf.peers)/2 {
+			rf.stateConverter(candidate, leader)
+			return
+		}
+		//超过半数反对, candidate convert to follower
+		if respondPeer-grantedPeer > len(rf.peers)/2 {
+			rf.stateConverter(candidate, follower)
+			return
+		}
 	}
 
 }
 
 func (rf *Raft) listenRequestVote() {
+}
+
+// 最后一条日志的term和index, term和index都从1开始
+func (rf *Raft) lastApplied() (term int, index int) {
+	index = len(rf.log) - 1
+	term = rf.log[index].Term
+	return
 }

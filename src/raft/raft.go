@@ -91,8 +91,8 @@ type Raft struct {
 
 	//volatile state on leaders
 	//reinitialized after election
-	nextIndex  []serverIdAndLogIndex //for each server, index of the next log entry to send to that server(initialized to leader last log index + 1)
-	matchIndex []serverIdAndLogIndex //for each server, index of the highest log entry known to be replicated on server(initialized to 0, increases monotonically)
+	nextIndex  []int //for each server, index of the next log entry to send to that server(initialized to leader last log index + 1)
+	matchIndex []int //for each server, index of the highest log entry known to be replicated on server(initialized to 0, increases monotonically)
 
 	sm stateMachine
 }
@@ -131,13 +131,6 @@ func (rf *Raft) persist() {
 	e.Encode(rf.commitIndex)
 	date := w.Bytes()
 	rf.persister.SaveRaftState(date)
-}
-
-// 最后一条日志的term和index, term和index都从1开始
-func (rf *Raft) lastApplied() (term int, index int) {
-	term = rf.log[len(rf.log) - 1].Term
-	index = len(rf.log)
-	return
 }
 
 //
