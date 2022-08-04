@@ -11,19 +11,50 @@ const (
 )
 
 type stateMachine struct {
-	state stateOfSM //状态机的状态
+	state     stateOfSM     //状态机的状态
+	killed    bool          //节点是否被终止
+	killedMsg chan struct{} //节点终止信号
 
 	electionTimer  *time.Timer //选举计时器
 	heartBeatTimer *time.Timer //心跳计时器
 
-	applyCh  chan ApplyMsg
-	killChan chan struct{} //节点被停止的信号
+	applyCh chan ApplyMsg
 }
 
-func start(rf *Raft) {
+func (rf *Raft) reStart() {
+	rf.sm.killed = false
 	//初始化成follower
 	rf.init(follower)
 }
+
+func (rf *Raft) firstStart() {
+	//初始化所有资源
+	rf.currentTerm = 1
+	rf.votedFor = -1
+	rf.log = make([]logEntry, 0)
+	rf.persist()
+
+	rf.sm.killed = false
+	rf.sm.killedMsg = make(chan struct{}, 5)
+	//初始化计时器, 防止uninitialized Timer panic
+	rf.sm.electionTimer = time.NewTimer(10 * time.Second)
+	rf.sm.electionTimer.Stop()
+	rf.sm.heartBeatTimer = time.NewTimer(10 * time.Second)
+	rf.sm.heartBeatTimer.Stop()
+
+	//初始化为follower
+	rf.init(follower)
+}
+
+func (rf *Raft) killStateMachine() {
+	rf.sm.killed = true
+	for i := 2; i > 0; i-- {
+		rf.sm.killedMsg <- struct{}{}
+	}
+	rf.sm.electionTimer.Stop()
+	rf.sm.heartBeatTimer.Stop()
+}
+
 
 // 选举周期 300~450
 func randomElectionTimeout() time.Duration {
@@ -34,6 +65,9 @@ func randomElectionTimeout() time.Duration {
 //stateChanger里面做状态初始化
 
 func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
+	if rf.sm.killed {
+		return
+	}
 
 	//follower进程中选举超时
 	if source == follower && target == candidate {
@@ -49,7 +83,7 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 	if source == follower && target == follower {
 		rf.sm.electionTimer.Stop()
 		rf.sm.electionTimer = time.NewTimer(randomElectionTimeout())
-		rf.listenRequestVote()
+		// rf.listenRequestVote()
 		return
 	}
 

@@ -194,11 +194,13 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+	rf.killStateMachine()
 }
 
 func (rf *Raft) killed() bool {
-	z := atomic.LoadInt32(&rf.dead)
-	return z == 1
+	// z := atomic.LoadInt32(&rf.dead)
+	// return z == 1
+	return rf.sm.killed
 }
 
 //

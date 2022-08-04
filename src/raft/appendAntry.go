@@ -18,6 +18,10 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	if rf.sm.killed {
+		return
+	}
+
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	rf.DebugLog("get entries: %+v", args)
@@ -61,23 +65,28 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.term = rf.currentTerm
 	}
 
-	//index同term同, 之前都相同
 	if rf.log[args.prevLogIndex].Term == args.prevLogTerm {
+		//index同term同, 之前都相同
 		reply.term = rf.currentTerm
 		reply.success = true
+		//更新节点日志
+		rf.log = rf.log[:args.prevLogIndex+1]
+		rf.log = append(rf.log, args.entries...)
+		rf.persist()
 		return
 	} else {
 		//index同Term不同, 需要继续向前找
 		reply.xTerm = rf.log[args.prevLogIndex].Term
 		xIndex := 0
-		for i := args.prevLogIndex; i > 0; i-- {
+		var i int
+		for i = args.prevLogIndex; i > 1; i-- {
 			if rf.log[i].Term != rf.log[args.prevLogIndex].Term {
 				xIndex = i + 1
 				break
 			}
 		}
-		if xIndex == 0 {
-			xIndex++
+		if i == 0 {
+			xIndex = 1
 		}
 		reply.xIndex = xIndex
 		reply.success = false
@@ -93,6 +102,10 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 }
 
 func (rf *Raft) sendAppendEntriesToEachPeers() {
+	if rf.sm.killed {
+		return
+	}
+
 	//获得返回值
 	// replyCh := make(chan AppendEntriesReply, len(rf.peers))
 	//通知主进程退出, 因为有term更高的节点
@@ -124,15 +137,23 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 			//如果节点日志信息匹配上了
 			if reply.success {
 				rf.nextIndex[i] = len(rf.log) //指向下一个位置
+				rf.persist()
+				return
+			}
+
+			//当前位置没有日志
+			if reply.xTerm == -1 {
+				rf.nextIndex[i] = rf.nextIndex[i] - reply.term
+				rf.persist()
 				return
 			}
 
 			//节点日志信息没有匹配
-
 			//返回的日志位置也不匹配
 			if rf.log[reply.xIndex].Term != reply.term {
 				//更新不匹配的日志的位置, 下次传输
 				rf.nextIndex[i] = reply.xIndex
+				rf.persist()
 				return
 			}
 
@@ -147,9 +168,10 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 	case <-rf.sm.heartBeatTimer.C:
 		rf.stateConverter(leader, leader)
 		return
+	case <- rf.sm.killedMsg:
+		return
 	}
 }
 
 func (rf *Raft) listenAppendEntries() {
 }
-

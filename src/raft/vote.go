@@ -29,6 +29,10 @@ type RequestVoteReply struct {
 // 2. if votedFor is null or candidateId, and candidate's log is at least as
 // 	  up-to-date as receiver's log. grant vote.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+	if rf.sm.killed {
+		return
+	}
+
 	// Your code here (2A, 2B).
 	//接受rpc请求
 	rf.mu.Lock()
@@ -156,6 +160,10 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 }
 
 func (rf *Raft) sendRequestVoteToEachPeers() {
+	if rf.sm.killed {
+		return
+	}
+
 	//响应RequestVote rpc节点个数
 	respondPeer := 1
 	//给候选人投票节点个数, 候选人自己给自己投票
@@ -214,6 +222,9 @@ func (rf *Raft) sendRequestVoteToEachPeers() {
 			rf.stateConverter(candidate, follower)
 			return
 		}
+
+	case <- rf.sm.killedMsg:
+		return
 	}
 
 }
