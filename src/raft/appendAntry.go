@@ -122,9 +122,15 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 				leaderId:     rf.me,
 				prevLogIndex: rf.nextIndex[i] - 1,
 				prevLogTerm:  rf.log[rf.nextIndex[i]-1].Term,
-				entries:      rf.log[rf.nextIndex[i]:],
+				entries:      nil,
 				leaderCommit: rf.commitIndex,
 			}
+			//上一次heartBeat到这一次heartBeat有命令
+			if rf.nextIndex[i] < len(rf.log) {
+				//防止数组越界
+				args.entries = rf.log[rf.nextIndex[i]:]
+			}
+
 			reply := &AppendEntriesReply{}
 			rf.sendAppendEntries(i, args, reply)
 
@@ -168,7 +174,7 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 	case <-rf.sm.heartBeatTimer.C:
 		rf.stateConverter(leader, leader)
 		return
-	case <- rf.sm.killedMsg:
+	case <-rf.sm.killedMsg:
 		return
 	}
 }

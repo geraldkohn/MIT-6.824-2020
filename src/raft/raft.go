@@ -60,12 +60,6 @@ type logEntry struct {
 	Term    int
 }
 
-//serverId 和 LogIndex
-type serverIdAndLogIndex struct {
-	serverId int //server id
-	logIndex int //log index
-}
-
 //
 // A Go object implementing a single Raft peer.
 //
@@ -208,7 +202,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return -1, -1, false
 	}
 
-	index, term := rf.appendLog()
+	index, term := rf.appendLog(command)
 	return index, term, true
 }
 
