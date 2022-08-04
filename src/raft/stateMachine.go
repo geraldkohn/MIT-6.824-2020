@@ -21,13 +21,24 @@ type stateMachine struct {
 	applyCh chan ApplyMsg
 }
 
-func (rf *Raft) reStart() {
+//rf.restart() 和 rf.firstStartUp() 入口函数
+func (rf *Raft) makeStart() {
+	if !rf.sm.killed {
+		rf.firstStartUp()
+	} else {
+		rf.restart()
+	}
+}
+
+func (rf *Raft) restart() {
 	rf.sm.killed = false
+	//读取数据
+	rf.readPersist(rf.persister.raftstate)
 	//初始化成follower
 	rf.init(follower)
 }
 
-func (rf *Raft) firstStart() {
+func (rf *Raft) firstStartUp() {
 	//初始化所有资源
 	rf.currentTerm = 1
 	rf.votedFor = -1
@@ -54,7 +65,6 @@ func (rf *Raft) killStateMachine() {
 	rf.sm.electionTimer.Stop()
 	rf.sm.heartBeatTimer.Stop()
 }
-
 
 // 选举周期 300~450
 func randomElectionTimeout() time.Duration {

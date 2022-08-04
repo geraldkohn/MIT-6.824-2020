@@ -101,10 +101,12 @@ type Raft struct {
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
 
-	var term int
-	var isleader bool
-	// Your code here (2A).
-	return term, isleader
+	// var term int
+	// var isleader bool
+	// // Your code here (2A).
+	// return term, isleader
+
+	return rf.currentTerm, rf.sm.state == leader
 }
 
 //
@@ -128,7 +130,7 @@ func (rf *Raft) persist() {
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
 	e.Encode(rf.log)
-	e.Encode(rf.commitIndex)
+	e.Encode(rf.sm.killed)
 	date := w.Bytes()
 	rf.persister.SaveRaftState(date)
 }
@@ -140,6 +142,7 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
+
 	// Your code here (2C).
 	// Example:
 	// r := bytes.NewBuffer(data)
@@ -153,6 +156,24 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+
+	rf.persister.mu.Lock()
+	defer rf.persister.mu.Unlock()
+
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var voteFor int
+	log := make([]logEntry, 0)
+	var killed bool
+	if d.Decode(&currentTerm) != nil || d.Decode(&voteFor) != nil || d.Decode(log) != nil || d.Decode(&killed) != nil {
+		panic("decode error")
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = voteFor
+		rf.log = log
+		rf.sm.killed = killed
+	}
 
 }
 
@@ -171,13 +192,24 @@ func (rf *Raft) readPersist(data []byte) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
+	// index := -1
+	// term := -1
+	// isLeader := true
 
-	// Your code here (2B).
+	// // Your code here (2B).
 
-	return index, term, isLeader
+	// return index, term, isLeader
+
+	if rf.sm.killed {
+		rf.restart()
+	}
+
+	if rf.sm.state != leader {
+		return -1, -1, false
+	}
+
+	index, term := rf.appendLog()
+	return index, term, true
 }
 
 //
@@ -194,12 +226,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+
 	rf.killStateMachine()
 }
 
 func (rf *Raft) killed() bool {
 	// z := atomic.LoadInt32(&rf.dead)
 	// return z == 1
+
 	return rf.sm.killed
 }
 
@@ -224,7 +258,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	// rf.readPersist(persister.ReadRaftState())
+
+	rf.makeStart()
+	rf.sm.applyCh = applyCh
 
 	return rf
 }
