@@ -2,6 +2,7 @@ package raft
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,9 @@ type stateMachine struct {
 	state     stateOfSM     //状态机的状态
 	killed    bool          //节点是否被终止
 	killedMsg chan struct{} //节点终止信号
+	commitLog chan struct{} //提交日志, 返回给客户端结果
+
+	mu map[string]*sync.RWMutex
 
 	electionTimer  *time.Timer //选举计时器
 	heartBeatTimer *time.Timer //心跳计时器
@@ -34,6 +38,12 @@ func (rf *Raft) restart() {
 	rf.sm.killed = false
 	//读取数据
 	rf.readPersist(rf.persister.raftstate)
+
+	//初始化
+	rf.commitIndex = 0
+	rf.matchIndex = make([]int, len(rf.peers))
+	rf.nextIndex = make([]int, len(rf.peers))
+
 	//初始化成follower
 	rf.init(follower)
 }
@@ -45,8 +55,17 @@ func (rf *Raft) firstStartUp() {
 	rf.log = make([]logEntry, 0)
 	rf.persist()
 
+	//初始化
+	rf.commitIndex = 0
+	rf.matchIndex = make([]int, len(rf.peers))
+	rf.nextIndex = make([]int, len(rf.peers))
+
+	//初始化stateMachine
 	rf.sm.killed = false
 	rf.sm.killedMsg = make(chan struct{}, 5)
+	rf.sm.mu = make(map[string]*sync.RWMutex)
+	rf.sm.commitLog = make(chan struct{})
+	rf.sm.applyCh = make(chan ApplyMsg)
 	//初始化计时器, 防止uninitialized Timer panic
 	rf.sm.electionTimer = time.NewTimer(10 * time.Second)
 	rf.sm.electionTimer.Stop()
@@ -194,4 +213,44 @@ func (rf *Raft) stop(source stateOfSM) {
 	default:
 		panic("state does not exist.")
 	}
+}
+
+func (rf *Raft) rLock(str string) {
+	if _, ok := rf.sm.mu[str]; ok {
+		rf.sm.mu[str].RLock()
+	} else {
+		mu := &sync.RWMutex{}
+		rf.sm.mu[str] = mu
+		rf.sm.mu[str].RLock()
+	}
+}
+
+func (rf *Raft) rUnlock(str string) {
+	if _, ok := rf.sm.mu[str]; ok {
+		rf.sm.mu[str].RUnlock()
+	} else {
+		panic("no RWMutex exist")
+	}
+}
+
+func (rf *Raft) rwLock(str string) {
+	if _, ok := rf.sm.mu[str]; ok {
+		rf.sm.mu[str].Lock()
+	} else {
+		mu := &sync.RWMutex{}
+		rf.sm.mu[str] = mu
+		rf.sm.mu[str].Lock()
+	}
+}
+
+func (rf *Raft) rwUnlock(str string) {
+	if _, ok := rf.sm.mu[str]; ok {
+		rf.sm.mu[str].Unlock()
+	} else {
+		panic("no RWMutex exist")
+	}
+}
+
+func logEntriesMutex() string {
+	return "log"
 }

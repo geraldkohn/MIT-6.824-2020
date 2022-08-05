@@ -117,6 +117,7 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 			continue
 		}
 		go func(exit chan struct{}, i int) {
+			rf.rLock(logEntriesMutex())
 			args := &AppendEntriesArgs{
 				term:         rf.currentTerm,
 				leaderId:     rf.me,
@@ -130,6 +131,9 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 				//防止数组越界
 				args.entries = rf.log[rf.nextIndex[i]:]
 			}
+			//发送请求之前的日志最后位置
+			rf.matchIndex[i] = len(rf.log) - 1
+			rf.rUnlock(logEntriesMutex())
 
 			reply := &AppendEntriesReply{}
 			rf.sendAppendEntries(i, args, reply)
@@ -142,15 +146,16 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 
 			//如果节点日志信息匹配上了
 			if reply.success {
-				rf.nextIndex[i] = len(rf.log) //指向下一个位置
-				rf.persist()
+				//更新leader可以提交的日志
+				rf.updateCommittedIndex(i)
+				//指向下一个位置, (这期间leader会收到很多请求, log在增长)
+				rf.nextIndex[i] = len(rf.log)
 				return
 			}
 
 			//当前位置没有日志
 			if reply.xTerm == -1 {
 				rf.nextIndex[i] = rf.nextIndex[i] - reply.term
-				rf.persist()
 				return
 			}
 
@@ -159,7 +164,6 @@ func (rf *Raft) sendAppendEntriesToEachPeers() {
 			if rf.log[reply.xIndex].Term != reply.term {
 				//更新不匹配的日志的位置, 下次传输
 				rf.nextIndex[i] = reply.xIndex
-				rf.persist()
 				return
 			}
 
