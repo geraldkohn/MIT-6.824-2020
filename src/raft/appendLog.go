@@ -21,9 +21,9 @@ func (rf *Raft) appendLog(command interface{}) (index int, term int) {
 	//leader will commit if most of followers receive command and append log
 	for {
 		select {
-		case <- rf.sm.commitLog:
+		case <-rf.sm.commitLog:
 			if index <= rf.commitIndex {
-				return 
+				return
 			} else {
 				continue
 			}
@@ -47,7 +47,7 @@ func (rf *Raft) updateCommittedIndex(serverId int) {
 				if count > len(rf.peers)/2 {
 					rf.commitIndex = i
 					newCommittedIndex = true
-					rf.DebugLog("update commit index: %d", i)
+					rf.DLog("update commit index: %d", i)
 					break
 				}
 			}

@@ -53,6 +53,10 @@ func (rf *Raft) firstStartUp() {
 	rf.currentTerm = 1
 	rf.votedFor = -1
 	rf.log = make([]logEntry, 0)
+	rf.log = append(rf.log, logEntry{
+		Command: "nil",
+		Term: 1,
+	})
 	rf.persist()
 
 	//初始化
@@ -100,6 +104,7 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 
 	//follower进程中选举超时
 	if source == follower && target == candidate {
+		rf.DLog("serverId: %d; 状态从follower变为candidate.", rf.me)
 		//follower相关进程结束
 		rf.stop(follower)
 
@@ -110,6 +115,7 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 
 	//Request Vote 投票给其他节点
 	if source == follower && target == follower {
+		rf.DLog("serverId: %d; 状态从follower变为follower.", rf.me)
 		rf.sm.electionTimer.Stop()
 		rf.sm.electionTimer = time.NewTimer(randomElectionTimeout())
 		// rf.listenRequestVote()
@@ -118,6 +124,7 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 
 	//Request Vote选举人接收到更大的选举周期, 或者半数投票反对(日志太旧)
 	if source == candidate && target == follower {
+		rf.DLog("serverId: %d; 状态从candidate变为follower.", rf.me)
 		//candidate相关进程结束
 		rf.stop(candidate)
 
@@ -128,6 +135,7 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 
 	//sendRequestVote 超时
 	if source == candidate && target == candidate {
+		rf.DLog("serverId: %d; 状态从candidate变为candidate.", rf.me)
 		rf.sm.electionTimer.Stop()
 		rf.sm.electionTimer = time.NewTimer(randomElectionTimeout())
 		rf.sendRequestVoteToEachPeers()
@@ -136,6 +144,7 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 
 	//通过半数同意, candidate convert to leader
 	if source == candidate && target == leader {
+		rf.DLog("serverId: %d; 状态从candidate变为leader.", rf.me)
 		//candidate相关进程结束
 		rf.stop(candidate)
 
@@ -146,6 +155,7 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 
 	//Request Vote Leader接收到更大的选举周期
 	if source == leader && target == follower {
+		rf.DLog("serverId: %d; 状态从leader变为follower.", rf.me)
 		//leader相关进程结束
 		rf.stop(leader)
 
@@ -155,7 +165,8 @@ func (rf *Raft) stateConverter(source stateOfSM, target stateOfSM) {
 	}
 
 	//leader发送新一波心跳
-	if source == leader && target == follower {
+	if source == leader && target == leader {
+		rf.DLog("serverId: %d; 状态从leader变为leader.", rf.me)
 		rf.sm.heartBeatTimer.Stop()
 		rf.sm.heartBeatTimer = time.NewTimer(timeHeartBeat)
 		rf.sendAppendEntriesToEachPeers()
@@ -174,6 +185,10 @@ func (rf *Raft) init(target stateOfSM) {
 		rf.sm.electionTimer = time.NewTimer(randomElectionTimeout())
 		// rf.listenRequestVote()
 		// rf.listenAppendEntries()
+		select {
+		case <- rf.sm.electionTimer.C:
+			rf.stateConverter(follower, candidate)
+		}
 	case candidate:
 		rf.votedFor = rf.me
 		rf.currentTerm += 1

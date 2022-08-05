@@ -6,10 +6,10 @@ package raft
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	term         int //candidate's term
-	candidateId  int //candidate requesting vote
-	lastLogIndex int //index of candidate's last log entry
-	lastLogTerm  int //term of candidate's last log entry
+	Term         int //candidate's term
+	CandidateId  int //candidate requesting vote
+	LastLogIndex int //index of candidate's last log entry
+	LastLogTerm  int //term of candidate's last log entry
 }
 
 //
@@ -18,8 +18,8 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
-	term        int  //currentTerm. for candidate to update itself
-	voteGranted bool //true means candidate received vote
+	Term        int  //currentTerm. for candidate to update itself
+	VoteGranted bool //true means candidate received vote
 }
 
 //
@@ -29,6 +29,7 @@ type RequestVoteReply struct {
 // 2. if votedFor is null or candidateId, and candidate's log is at least as
 // 	  up-to-date as receiver's log. grant vote.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+	rf.DLog("serverId: %d; 收到RequestVote rpc请求.", rf.me)
 	if rf.sm.killed {
 		return
 	}
@@ -38,52 +39,54 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer func() {
-		rf.DebugLog("%+v get request vote, args:%+v, reply:%+v", rf.sm.state, args, reply)
+		rf.DLog("%+v get request vote, args:%+v, reply:%+v", rf.sm.state, args, reply)
 	}()
 
 	//判断候选人的term和当前节点的term
-	if args.term < rf.currentTerm {
+	if args.Term < rf.currentTerm {
 		//任期落后, 拒绝投票
-		reply.term = rf.currentTerm
-		reply.voteGranted = false
+		reply.Term = rf.currentTerm
+		reply.VoteGranted = false
 		return
-	} else if args.term == rf.currentTerm {
+	} else if args.Term == rf.currentTerm {
 		switch rf.sm.state {
 		case leader:
 			//当前的角色是Leader, 拒绝投票
-			reply.voteGranted = false
-			reply.term = rf.currentTerm
+			reply.VoteGranted = false
+			reply.Term = rf.currentTerm
 			return
 
 		case candidate:
 			//当前的角色是candidate, 投自己的票
-			reply.voteGranted = false
-			reply.term = rf.currentTerm
+			reply.VoteGranted = false
+			reply.Term = rf.currentTerm
 			return
 
 		case follower:
-			if rf.votedFor == args.candidateId || rf.votedFor == -1 {
+			if rf.votedFor == args.CandidateId || rf.votedFor == -1 {
 				//当前任期重复投票给同一个候选人, 或者没有投票, 判断是否选举限制
 				lastLogTerm, lastLogIndex := rf.lastApplied()
-				if args.lastLogTerm < lastLogTerm || args.lastLogTerm == lastLogTerm && args.lastLogIndex < lastLogIndex {
+				if args.LastLogTerm < lastLogTerm || args.LastLogTerm == lastLogTerm && args.LastLogIndex < lastLogIndex {
 					//选举限制, 候选人日志落后于此节点. 拒绝选举
-					reply.voteGranted = false
-					reply.term = rf.currentTerm
+					reply.VoteGranted = false
+					reply.Term = rf.currentTerm
 					return
 				} else {
 					//选举不限制, 可以选举
-					reply.voteGranted = true
-					reply.term = rf.currentTerm
+					reply.VoteGranted = true
+					reply.Term = rf.currentTerm
+					rf.votedFor = args.CandidateId
 					//变换节点状态, follower --> follower
+					rf.DLog("serverId: %d; RequestVote rpc调用投票给 %d.", rf.me, args.CandidateId)
 					rf.stateConverter(follower, follower)
 					return
 				}
 			}
 
-			if rf.votedFor != args.candidateId {
+			if rf.votedFor != args.CandidateId {
 				//当前任期已经投票给其他候选人
-				reply.voteGranted = false
-				reply.term = rf.currentTerm
+				reply.VoteGranted = false
+				reply.Term = rf.currentTerm
 				return
 			}
 		}
@@ -91,21 +94,23 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		//args.term > rf.currentTerm
 		//任期落后. 更新任期号, 并且切换成跟随者状态. 并且重新储存需要持久化的数据
 		defer rf.persist()
-		rf.currentTerm = args.term
+		rf.currentTerm = args.Term
 		rf.votedFor = -1
 
 		switch rf.sm.state {
 		case follower:
 			lastLogTerm, lastLogIndex := rf.lastApplied()
-			if args.lastLogTerm < lastLogTerm || args.lastLogTerm == lastLogTerm && args.lastLogIndex < lastLogIndex {
+			if args.LastLogTerm < lastLogTerm || args.LastLogTerm == lastLogTerm && args.LastLogIndex < lastLogIndex {
 				//选举限制, 候选人日志落后于此节点. 拒绝选举
-				reply.voteGranted = false
-				reply.term = rf.currentTerm
+				reply.VoteGranted = false
+				reply.Term = rf.currentTerm
 				return
 			} else {
 				//选举不限制, 可以选举
-				reply.voteGranted = true
-				reply.term = rf.currentTerm
+				reply.VoteGranted = true
+				reply.Term = rf.currentTerm
+				rf.votedFor = args.CandidateId
+				rf.DLog("serverId: %d; RequestVote rpc调用投票给 %d.", rf.me, args.CandidateId)
 				//变换节点状态, follower --> follower
 				rf.stateConverter(follower, follower)
 				return
@@ -173,10 +178,10 @@ func (rf *Raft) sendRequestVoteToEachPeers() {
 	voteCh := make(chan bool, len(rf.peers))
 	lastLogIndex, lastLogTerm := rf.lastApplied()
 	args := &RequestVoteArgs{
-		term:         rf.currentTerm,
-		candidateId:  rf.me,
-		lastLogIndex: lastLogIndex,
-		lastLogTerm:  lastLogTerm,
+		Term:         rf.currentTerm,
+		CandidateId:  rf.me,
+		LastLogIndex: lastLogIndex,
+		LastLogTerm:  lastLogTerm,
 	}
 	//遍历每一个节点, 除了自己
 	for i := range rf.peers {
@@ -186,45 +191,50 @@ func (rf *Raft) sendRequestVoteToEachPeers() {
 		go func(ch chan bool, exit chan struct{}, i int) {
 			reply := &RequestVoteReply{}
 			rf.sendRequestVote(i, args, reply)
-			ch <- reply.voteGranted
+			ch <- reply.VoteGranted
 			//其他节点term比自身还要高, 需要退回到follower状态
-			if reply.term > args.term {
+			if reply.Term > args.Term {
 				rf.stateConverter(candidate, follower)
 				exit <- struct{}{}
 			}
 		}(voteCh, exit, i)
 	}
 
-	select {
-	case <-exit: //主进程退出
-		close(voteCh)
-		close(exit)
-		return
+	for {
+		select {
+		case <-exit: //主进程退出
+			rf.DLog("serverId: %d; state: candidate; 因为收到了更大的任期号, 状态变成follower.", rf.me)
+			return
 
-	case <-rf.sm.electionTimer.C: //选举超时
-		close(voteCh)
-		close(exit)
-		rf.stateConverter(candidate, candidate)
-		return
+		case <-rf.sm.electionTimer.C: //选举超时
+			rf.DLog("serverId: %d; state: candidate; 选举超时.", rf.me)
+			rf.stateConverter(candidate, candidate)
+			return
 
-	case vote := <-voteCh: //获得rpc调用结果
-		respondPeer += 1
-		if vote {
-			grantedPeer += 1
-		}
-		//超过半数同意, candidate convert to leader
-		if grantedPeer > len(rf.peers)/2 {
-			rf.stateConverter(candidate, leader)
+		case vote := <-voteCh: //获得rpc调用结果
+			respondPeer += 1
+			if vote {
+				grantedPeer += 1
+			}
+			//超过半数同意, candidate convert to leader
+			if grantedPeer > len(rf.peers)/2 {
+				rf.DLog("serverId: %d; state: candidate; 超过半数同意, 当选为leader.", rf.me)
+				rf.stateConverter(candidate, leader)
+				return
+			}
+			//超过半数反对, candidate convert to follower
+			if respondPeer-grantedPeer > len(rf.peers)/2 {
+				rf.DLog("serverId: %d; state: candidate; 超过半数反对, 变成follower", rf.me)
+				rf.stateConverter(candidate, follower)
+				return
+			}
+			//继续接受返回值
+			//...
+
+		case <-rf.sm.killedMsg:
+			rf.DLog("serverId: %d; state: candidate; 节点被强行终止.", rf.me)
 			return
 		}
-		//超过半数反对, candidate convert to follower
-		if respondPeer-grantedPeer > len(rf.peers)/2 {
-			rf.stateConverter(candidate, follower)
-			return
-		}
-
-	case <- rf.sm.killedMsg:
-		return
 	}
 
 }
